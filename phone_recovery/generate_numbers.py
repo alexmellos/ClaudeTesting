@@ -25,25 +25,26 @@ def generate_phone_numbers():
 def prioritize_by_likelihood(numbers):
     """
     Sort numbers by likelihood based on common patterns.
-    People often have 'memorable' numbers with patterns.
+    Optimized for numbers from 2011-2013 era (12-14 years old).
     """
 
     def score(num):
         score = 0
 
-        # Common German mobile prefixes (more popular carriers first)
+        # German mobile prefixes - prioritized for 2011-2013 era
+        # During that time, O2/E-Plus (0176-0179) and T-Mobile (0175) were very active
         prefix = num[:4]
         prefix_scores = {
-            '0176': 10,  # O2 - very common
-            '0175': 9,   # O2
-            '0170': 8,   # Telekom
-            '0171': 8,   # Telekom
-            '0172': 8,   # Telekom
+            '0176': 15,  # O2 - VERY common in 2011-2013, most new contracts
+            '0177': 14,  # E-Plus - very common in that era
+            '0178': 13,  # E-Plus - common for prepaid
+            '0175': 12,  # T-Mobile - popular in that period
+            '0179': 11,  # O2 - common
+            '0170': 8,   # Telekom - older prefix, less common for new numbers
+            '0171': 8,   # Telekom - older prefix
             '0173': 7,   # Vodafone
             '0174': 7,   # Vodafone
-            '0177': 6,   # E-Plus
-            '0178': 6,   # E-Plus
-            '0179': 6,   # O2
+            '0172': 6,   # Telekom - less common in that era
         }
         score += prefix_scores.get(prefix, 0)
 
