@@ -1,0 +1,13 @@
+{
+  "name": "phone-recovery-whatsapp-checker",
+  "version": "1.0.0",
+  "description": "Check WhatsApp profile pictures to recover a forgotten phone number",
+  "main": "whatsapp_checker.js",
+  "scripts": {
+    "check": "node whatsapp_checker.js"
+  },
+  "dependencies": {
+    "whatsapp-web.js": "^1.23.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
