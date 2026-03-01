@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Text Editor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ═══════════════ UPLOAD SCREEN ═══════════════ -->
+  <div id="upload-screen">
+    <div class="upload-card">
+      <div class="upload-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="12" y1="18" x2="12" y2="12"/>
+          <line x1="9" y1="15" x2="15" y2="15"/>
+        </svg>
+      </div>
+      <h1>PDF Text Editor</h1>
+      <p class="subtitle">Upload a PDF and click any text to edit it</p>
+
+      <div id="drop-zone" class="drop-zone">
+        <p>Drag &amp; drop your PDF here</p>
+        <span class="or">or</span>
+        <button class="btn-primary" id="choose-file-btn">Choose File</button>
+      </div>
+      <input type="file" id="file-input" accept=".pdf" hidden>
+    </div>
+  </div>
+
+  <!-- ═══════════════ EDITOR SCREEN ═══════════════ -->
+  <div id="editor-screen" class="hidden">
+
+    <header class="toolbar">
+      <div class="toolbar-left">
+        <button class="btn-icon" id="back-btn" title="Back to upload">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M19 12H5M5 12l7-7M5 12l7 7"/>
+          </svg>
+        </button>
+        <span class="file-name" id="file-name-label"></span>
+      </div>
+
+      <div class="toolbar-center" id="text-toolbar">
+        <select id="font-family" title="Font family">
+          <option value="Helvetica">Helvetica</option>
+          <option value="Times-Roman">Times Roman</option>
+          <option value="Courier">Courier</option>
+        </select>
+
+        <div class="font-size-control">
+          <button class="btn-sm" id="font-size-down" title="Decrease size">−</button>
+          <input type="number" id="font-size" value="12" min="4" max="144" title="Font size">
+          <button class="btn-sm" id="font-size-up" title="Increase size">+</button>
+        </div>
+
+        <div class="btn-group">
+          <button class="btn-format" id="btn-bold" title="Bold"><b>B</b></button>
+          <button class="btn-format" id="btn-italic" title="Italic"><i>I</i></button>
+        </div>
+
+        <label class="color-wrap" title="Text color">
+          <input type="color" id="text-color" value="#000000">
+          <span>Color</span>
+        </label>
+      </div>
+
+      <div class="toolbar-right">
+        <button class="btn-download" id="download-btn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download PDF
+        </button>
+      </div>
+    </header>
+
+    <div class="editor-hint" id="editor-hint">
+      Click on any text in the document to edit it
+    </div>
+
+    <div class="pages-container" id="pages-container"></div>
+  </div>
+
+  <!-- ═══════════════ LOADING OVERLAY ═══════════════ -->
+  <div id="loading-overlay" class="hidden">
+    <div class="spinner"></div>
+    <p id="loading-text">Loading PDF…</p>
+  </div>
+
+  <!-- Libraries via CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
