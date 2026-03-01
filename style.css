@@ -451,19 +451,15 @@ input[type="number"] { -moz-appearance: textfield; }
   outline: 1px solid rgba(77, 121, 255, .4);
 }
 
-/* Active editing state */
+/* Active editing state — background & color applied via JS (sampled from canvas) */
 .text-item.editing {
-  color: #111 !important;
-  background: rgba(255,255,255,.98) !important;
   outline: 2px solid #4d79ff !important;
   z-index: 50;
   box-shadow: 0 2px 20px rgba(77,121,255,.4);
 }
 
-/* Committed edits */
-.text-item.modified {
-  background: rgba(255,255,255,.96);
-}
+/* Committed edits — background applied inline via JS */
+.text-item.modified { }
 
 /* ─────────────────────────────────────────
    Loading overlay

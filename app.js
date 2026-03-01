@@ -4,30 +4,21 @@
           pdf-lib → write edits back into the PDF on save
 ═══════════════════════════════════════════════════════ */
 
-// Point PDF.js at its worker script (same CDN version)
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 // ─────────────────────────────────────────
 // App state
 // ─────────────────────────────────────────
-let pdfJsDoc   = null;   // PDF.js document (for rendering)
-let pdfBytes   = null;   // original ArrayBuffer (for pdf-lib on save)
+let pdfJsDoc   = null;
+let pdfBytes   = null;
 let fileName   = 'document';
-const SCALE    = 1.5;    // render scale
+const SCALE    = 1.5;
 
-// Edits: { pageNum: { itemIndex: editData } }
-// editData: { newText, fontSize, fontFamily, bold, italic, color,
-//             x, y, width, height (all in PDF user-space units) }
-const edits = {};
+const edits     = {};   // { pageNum: { itemIdx: editData } }
+const pageItems = {};   // { pageNum: [item, …] }
+let   activeDiv = null;
 
-// Page text items from PDF.js: { pageNum: [item, …] }
-const pageItems = {};
-
-// Currently-focused text div
-let activeDiv = null;
-
-// Style that the toolbar reflects (updated on focus, applied on change)
 const style = {
   fontSize:   12,
   fontFamily: 'Helvetica',
@@ -39,19 +30,19 @@ const style = {
 // ─────────────────────────────────────────
 // DOM refs
 // ─────────────────────────────────────────
-const uploadScreen  = document.getElementById('upload-screen');
-const editorScreen  = document.getElementById('editor-screen');
-const fileInput     = document.getElementById('file-input');
-const dropZone      = document.getElementById('drop-zone');
-const pagesContainer= document.getElementById('pages-container');
-const loadingOverlay= document.getElementById('loading-overlay');
-const loadingText   = document.getElementById('loading-text');
-const fileNameLabel = document.getElementById('file-name-label');
-const fontFamilySel = document.getElementById('font-family');
-const fontSizeInput = document.getElementById('font-size');
-const btnBold       = document.getElementById('btn-bold');
-const btnItalic     = document.getElementById('btn-italic');
-const textColorInput= document.getElementById('text-color');
+const uploadScreen   = document.getElementById('upload-screen');
+const editorScreen   = document.getElementById('editor-screen');
+const fileInput      = document.getElementById('file-input');
+const dropZone       = document.getElementById('drop-zone');
+const pagesContainer = document.getElementById('pages-container');
+const loadingOverlay = document.getElementById('loading-overlay');
+const loadingText    = document.getElementById('loading-text');
+const fileNameLabel  = document.getElementById('file-name-label');
+const fontFamilySel  = document.getElementById('font-family');
+const fontSizeInput  = document.getElementById('font-size');
+const btnBold        = document.getElementById('btn-bold');
+const btnItalic      = document.getElementById('btn-italic');
+const textColorInput = document.getElementById('text-color');
 
 // ═══════════════════════════════════════════════════════
 // 1.  FILE UPLOAD
@@ -62,11 +53,7 @@ document.getElementById('choose-file-btn').addEventListener('click', () => fileI
 dropZone.addEventListener('click', e => {
   if (e.target.id !== 'choose-file-btn') fileInput.click();
 });
-
-dropZone.addEventListener('dragover', e => {
-  e.preventDefault();
-  dropZone.classList.add('drag-over');
-});
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
 dropZone.addEventListener('drop', e => {
   e.preventDefault();
@@ -79,7 +66,6 @@ fileInput.addEventListener('change', () => {
   if (fileInput.files[0]) openPDF(fileInput.files[0]);
 });
 
-// ─── Back button ─────────────────────────
 document.getElementById('back-btn').addEventListener('click', () => {
   pdfJsDoc = null;
   pdfBytes = null;
@@ -99,11 +85,10 @@ document.getElementById('back-btn').addEventListener('click', () => {
 async function openPDF(file) {
   showLoading('Loading PDF…');
   try {
-    fileName    = file.name.replace(/\.pdf$/i, '');
-    pdfBytes    = await file.arrayBuffer();
+    fileName  = file.name.replace(/\.pdf$/i, '');
+    pdfBytes  = await file.arrayBuffer();
     fileNameLabel.textContent = file.name;
 
-    // Load with PDF.js (clone bytes so pdf-lib can also use them later)
     pdfJsDoc = await pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
 
     uploadScreen.classList.add('hidden');
@@ -130,34 +115,33 @@ async function renderPage(pageNum) {
   const page     = await pdfJsDoc.getPage(pageNum);
   const viewport = page.getViewport({ scale: SCALE });
 
-  // Outer wrapper (position:relative so text layer can be absolute)
-  const wrapper  = document.createElement('div');
-  wrapper.className   = 'page-wrapper';
+  const wrapper = document.createElement('div');
+  wrapper.className    = 'page-wrapper';
   wrapper.dataset.page = pageNum;
 
   // ── Canvas ──────────────────────────────
-  const canvas   = document.createElement('canvas');
-  canvas.width   = viewport.width;
-  canvas.height  = viewport.height;
+  const canvas = document.createElement('canvas');
+  canvas.width  = viewport.width;
+  canvas.height = viewport.height;
   await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
 
   // ── Transparent text overlay ────────────
-  const overlay  = document.createElement('div');
-  overlay.className = 'text-layer';
+  const overlay = document.createElement('div');
+  overlay.className    = 'text-layer';
   overlay.style.width  = viewport.width  + 'px';
   overlay.style.height = viewport.height + 'px';
 
   const textContent = await page.getTextContent();
   pageItems[pageNum] = textContent.items;
 
+  // Pass the rendered canvas so each div can sample its background colour
   textContent.items.forEach((item, idx) => {
     if (!item.str.trim()) return;
-    const el = buildTextDiv(item, idx, pageNum, viewport);
+    const el = buildTextDiv(item, idx, pageNum, viewport, canvas);
     if (el) overlay.appendChild(el);
   });
 
-  // ── Page number label ────────────────────
-  const label  = document.createElement('div');
+  const label = document.createElement('div');
   label.className   = 'page-label';
   label.textContent = `Page ${pageNum}`;
 
@@ -167,53 +151,80 @@ async function renderPage(pageNum) {
   pagesContainer.appendChild(label);
 }
 
-// ─── Build one transparent click-target div ─────────────
-function buildTextDiv(item, idx, pageNum, viewport) {
+// ─────────────────────────────────────────
+// Sample the dominant background colour from the canvas at a text position.
+// Averages all pixels in the bounding box — since most pixels in a text cell
+// are background rather than ink, the average is a good approximation.
+// ─────────────────────────────────────────
+function sampleBgColor(canvas, x, y, w, h) {
+  const ctx = canvas.getContext('2d');
+  const sx  = Math.max(0, Math.round(x));
+  const sy  = Math.max(0, Math.round(y));
+  const sw  = Math.min(Math.max(1, Math.round(w)), canvas.width  - sx);
+  const sh  = Math.min(Math.max(2, Math.round(h)), canvas.height - sy);
+  if (sw <= 0 || sh <= 0) return '#ffffff';
+
+  try {
+    const data = ctx.getImageData(sx, sy, sw, sh).data;
+    let r = 0, g = 0, b = 0, n = 0;
+    // Sample every 4th pixel for speed
+    for (let i = 0; i < data.length; i += 16) {
+      r += data[i]; g += data[i + 1]; b += data[i + 2]; n++;
+    }
+    if (!n) return '#ffffff';
+    return '#' + [r, g, b]
+      .map(v => Math.round(v / n).toString(16).padStart(2, '0'))
+      .join('');
+  } catch { return '#ffffff'; }
+}
+
+// ─────────────────────────────────────────
+// Build one transparent click-target div
+// ─────────────────────────────────────────
+function buildTextDiv(item, idx, pageNum, viewport, canvas) {
   const [a, b, c, d, e, f] = item.transform;
 
-  // Font size in PDF user-space units (vertical scale of the matrix)
   const pdfFontSize = Math.abs(d) || Math.abs(a);
   if (pdfFontSize < 1) return null;
 
-  // Convert PDF bottom-left origin → canvas top-left origin
   const screenLeft = e * SCALE;
   const screenTop  = viewport.height - f * SCALE - pdfFontSize * SCALE;
-  const screenW    = (item.width  || pdfFontSize * item.str.length * 0.6) * SCALE;
+  const screenW    = (item.width || pdfFontSize * item.str.length * 0.6) * SCALE;
+  const screenH    = pdfFontSize * SCALE * 1.3;  // tall enough to cover descenders
+
+  // Sample the background colour from the already-rendered canvas
+  const bgColor = canvas
+    ? sampleBgColor(canvas, screenLeft, screenTop, screenW + 4, screenH)
+    : '#ffffff';
 
   const div = document.createElement('div');
-  div.className        = 'text-item';
-  div.contentEditable  = 'false';
-  div.textContent      = item.str;
+  div.className       = 'text-item';
+  div.contentEditable = 'false';
+  div.textContent     = item.str;
 
-  // Store original PDF coordinates as data attributes (needed for pdf-lib)
-  div.dataset.original  = item.str;
-  div.dataset.page      = pageNum;
-  div.dataset.idx       = idx;
-  div.dataset.pdfX      = e;
-  div.dataset.pdfY      = f;
-  div.dataset.pdfW      = item.width  || 0;
-  div.dataset.pdfH      = item.height || pdfFontSize;
-  div.dataset.pdfFs     = pdfFontSize;   // original font size (PDF pts)
+  div.dataset.original = item.str;
+  div.dataset.page     = pageNum;
+  div.dataset.idx      = idx;
+  div.dataset.pdfX     = e;
+  div.dataset.pdfY     = f;
+  div.dataset.pdfW     = item.width  || 0;
+  div.dataset.pdfH     = item.height || pdfFontSize;
+  div.dataset.pdfFs    = pdfFontSize;
+  div.dataset.bgColor  = bgColor;   // ← stored for editing + PDF export
 
   div.style.left     = screenLeft + 'px';
   div.style.top      = screenTop  + 'px';
+  div.style.width    = (screenW + 4) + 'px';
+  div.style.height   = screenH + 'px';
   div.style.fontSize = (pdfFontSize * SCALE) + 'px';
-  div.style.width    = (screenW + 4) + 'px';   // slight padding
 
   // ── Events ───────────────────────────────
-  div.addEventListener('click', e => { e.stopPropagation(); startEdit(div); });
-  div.addEventListener('blur',  ()                       => commitEdit(div));
-  div.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      div.textContent = div.dataset.original;   // revert
-      div.blur();
-    }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      div.blur();
-    }
+  div.addEventListener('click',   ev => { ev.stopPropagation(); startEdit(div); });
+  div.addEventListener('blur',    ()  => commitEdit(div));
+  div.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape') { div.textContent = div.dataset.original; div.blur(); }
+    if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); div.blur(); }
   });
-  // Auto-widen while typing
   div.addEventListener('input', () => { div.style.width = 'auto'; });
 
   return div;
@@ -224,7 +235,6 @@ function buildTextDiv(item, idx, pageNum, viewport) {
 // ═══════════════════════════════════════════════════════
 
 function startEdit(div) {
-  // Commit any previously active div first
   if (activeDiv && activeDiv !== div) {
     activeDiv.contentEditable = 'false';
     activeDiv.classList.remove('editing');
@@ -237,7 +247,6 @@ function startEdit(div) {
   const idx     = parseInt(div.dataset.idx);
   const saved   = edits[pageNum]?.[idx];
 
-  // Load style from saved edit, or use defaults
   style.fontSize   = saved?.fontSize   ?? parseFloat(div.dataset.pdfFs);
   style.fontFamily = saved?.fontFamily ?? 'Helvetica';
   style.bold       = saved?.bold       ?? false;
@@ -247,11 +256,14 @@ function startEdit(div) {
   syncToolbar();
   applyStyleToDiv(div);
 
+  // Cover the original canvas text with the sampled background colour
+  div.style.background = div.dataset.bgColor || '#ffffff';
+
   div.contentEditable = 'true';
   div.classList.add('editing');
   div.focus();
 
-  // Select all text so user can type straight away
+  // Select all text so the user can type immediately
   const range = document.createRange();
   range.selectNodeContents(div);
   const sel = window.getSelection();
@@ -268,17 +280,14 @@ function commitEdit(div) {
   const orig = div.dataset.original;
 
   if (text !== orig) {
-    // Text changed — save edit and keep div visible
     div.classList.add('modified');
     storeEdit(div);
     finaliseStyle(div);
   } else {
-    // Nothing changed — remove any previous edit for this item,
-    // and make div invisible again so original canvas text shows through
+    // Nothing changed — revert to invisible (original canvas text shows through)
     const pageNum = parseInt(div.dataset.page);
     const idx     = parseInt(div.dataset.idx);
     if (edits[pageNum]) delete edits[pageNum][idx];
-
     div.classList.remove('modified');
     resetDivStyle(div);
   }
@@ -290,25 +299,23 @@ function storeEdit(div) {
   if (!edits[pageNum]) edits[pageNum] = {};
 
   edits[pageNum][idx] = {
-    newText:    div.textContent,
-    fontSize:   style.fontSize,
-    fontFamily: style.fontFamily,
-    bold:       style.bold,
-    italic:     style.italic,
-    color:      style.color,
-    // PDF-space geometry for placing the white cover rect
-    x:  parseFloat(div.dataset.pdfX),
-    y:  parseFloat(div.dataset.pdfY),
-    w:  parseFloat(div.dataset.pdfW),
-    h:  parseFloat(div.dataset.pdfH),
+    newText:      div.textContent,
+    fontSize:     style.fontSize,
+    fontFamily:   style.fontFamily,
+    bold:         style.bold,
+    italic:       style.italic,
+    color:        style.color,
+    bgColor:      div.dataset.bgColor || '#ffffff',  // used for PDF cover rect
+    x:            parseFloat(div.dataset.pdfX),
+    y:            parseFloat(div.dataset.pdfY),
+    w:            parseFloat(div.dataset.pdfW),
+    h:            parseFloat(div.dataset.pdfH),
     origFontSize: parseFloat(div.dataset.pdfFs),
   };
 }
 
-// Click outside any text item → commit current edit
-document.addEventListener('click', () => {
-  if (activeDiv) activeDiv.blur();
-});
+// Click anywhere outside a text item → commit current edit
+document.addEventListener('click', () => { if (activeDiv) activeDiv.blur(); });
 
 // ═══════════════════════════════════════════════════════
 // 4.  TOOLBAR
@@ -353,11 +360,11 @@ textColorInput.addEventListener('input', () => {
 // ─── Helpers ─────────────────────────────
 
 function syncToolbar() {
-  fontSizeInput.value    = Math.round(style.fontSize);
-  fontFamilySel.value    = style.fontFamily;
+  fontSizeInput.value = Math.round(style.fontSize);
+  fontFamilySel.value = style.fontFamily;
   btnBold  .classList.toggle('active', style.bold);
   btnItalic.classList.toggle('active', style.italic);
-  textColorInput.value   = style.color;
+  textColorInput.value = style.color;
 }
 
 function applyStyleToDiv(div) {
@@ -369,8 +376,9 @@ function applyStyleToDiv(div) {
 }
 
 function finaliseStyle(div) {
-  // Keep the styles that were applied during editing
   applyStyleToDiv(div);
+  // Keep the sampled background so the modified text covers the original
+  div.style.background = div.dataset.bgColor || '#ffffff';
 }
 
 function resetDivStyle(div) {
@@ -416,25 +424,21 @@ document.getElementById('download-btn').addEventListener('click', async () => {
 async function buildPDF() {
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
 
-  // Load the original PDF bytes
   const doc   = await PDFDocument.load(pdfBytes.slice(0));
   const pages = doc.getPages();
-
-  // Embed all standard font variants we might need
   const fonts = await embedFonts(doc, StandardFonts);
 
   for (const [pageStr, pageEdits] of Object.entries(edits)) {
-    const page   = pages[parseInt(pageStr) - 1];
-    const { height: pageH } = page.getSize();
+    const page = pages[parseInt(pageStr) - 1];
 
     for (const edit of Object.values(pageEdits)) {
       const { x, y, w, origFontSize, newText,
-              fontSize, fontFamily, bold, italic, color } = edit;
+              fontSize, fontFamily, bold, italic, color, bgColor } = edit;
 
-      // 1. White rectangle to cover the original text
-      //    PDF y grows upward, so the baseline is y, top is y + origFontSize*~0.8
+      // 1. Cover rectangle — use the sampled background colour (not hardcoded white)
+      const bg    = hexToRgb(bgColor || '#ffffff');
       const rectH = origFontSize * 1.3;
-      const rectY = y - origFontSize * 0.25;  // a little below baseline for descenders
+      const rectY = y - origFontSize * 0.25;
       const rectW = Math.max(w, origFontSize * newText.length * 0.6) + 6;
 
       page.drawRectangle({
@@ -442,16 +446,16 @@ async function buildPDF() {
         y:      rectY,
         width:  rectW,
         height: rectH,
-        color:  rgb(1, 1, 1),
+        color:  rgb(bg.r / 255, bg.g / 255, bg.b / 255),
       });
 
       // 2. Draw the new text at the same baseline
-      const font  = pickFont(fonts, fontFamily, bold, italic);
-      const clr   = hexToRgb(color);
+      const font = pickFont(fonts, fontFamily, bold, italic);
+      const clr  = hexToRgb(color);
 
       page.drawText(newText, {
         x,
-        y,          // PDF baseline
+        y,
         size:  fontSize,
         font,
         color: rgb(clr.r / 255, clr.g / 255, clr.b / 255),
@@ -464,18 +468,18 @@ async function buildPDF() {
 
 async function embedFonts(doc, SF) {
   return {
-    'Helvetica':            await doc.embedFont(SF.Helvetica),
-    'Helvetica-Bold':       await doc.embedFont(SF.HelveticaBold),
-    'Helvetica-Oblique':    await doc.embedFont(SF.HelveticaOblique),
-    'Helvetica-BoldOblique':await doc.embedFont(SF.HelveticaBoldOblique),
-    'Times-Roman':          await doc.embedFont(SF.TimesRoman),
-    'Times-Bold':           await doc.embedFont(SF.TimesRomanBold),
-    'Times-Italic':         await doc.embedFont(SF.TimesRomanItalic),
-    'Times-BoldItalic':     await doc.embedFont(SF.TimesRomanBoldItalic),
-    'Courier':              await doc.embedFont(SF.Courier),
-    'Courier-Bold':         await doc.embedFont(SF.CourierBold),
-    'Courier-Oblique':      await doc.embedFont(SF.CourierOblique),
-    'Courier-BoldOblique':  await doc.embedFont(SF.CourierBoldOblique),
+    'Helvetica':             await doc.embedFont(SF.Helvetica),
+    'Helvetica-Bold':        await doc.embedFont(SF.HelveticaBold),
+    'Helvetica-Oblique':     await doc.embedFont(SF.HelveticaOblique),
+    'Helvetica-BoldOblique': await doc.embedFont(SF.HelveticaBoldOblique),
+    'Times-Roman':           await doc.embedFont(SF.TimesRoman),
+    'Times-Bold':            await doc.embedFont(SF.TimesRomanBold),
+    'Times-Italic':          await doc.embedFont(SF.TimesRomanItalic),
+    'Times-BoldItalic':      await doc.embedFont(SF.TimesRomanBoldItalic),
+    'Courier':               await doc.embedFont(SF.Courier),
+    'Courier-Bold':          await doc.embedFont(SF.CourierBold),
+    'Courier-Oblique':       await doc.embedFont(SF.CourierOblique),
+    'Courier-BoldOblique':   await doc.embedFont(SF.CourierBoldOblique),
   };
 }
 
@@ -503,8 +507,9 @@ function pickFont(fonts, family, bold, italic) {
 
 function hexToRgb(hex) {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return m ? { r: parseInt(m[1],16), g: parseInt(m[2],16), b: parseInt(m[3],16) }
-           : { r: 0, g: 0, b: 0 };
+  return m
+    ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) }
+    : { r: 0, g: 0, b: 0 };
 }
 
 // ═══════════════════════════════════════════════════════
